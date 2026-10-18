@@ -994,7 +994,7 @@ function mealSheet(opt){
     cost:ent&&!rec?String(ent.lines&&ent.lines.length?(ent.extra?ent.extra:''):ent.cost):'',
     lines:ent&&!rec&&ent.lines?ent.lines.map(function(l){return {ing:l.ing,n:l.n,qty:String(l.qty),unit:l.unit,snap:l.c};}):[],
     slot:ent?ent.slot:(opt.slot||defaultSlot()),date:ent?ent.date:S.date,q:'',
-    photo:ent&&ent.photo?ent.photo:'',notes:ent&&ent.notes?ent.notes:'',uploaded:[],busy:false,photoErr:''
+    photo:ent&&ent.photo?ent.photo:'',notes:ent&&ent.notes?ent.notes:'',saveRec:false,uploaded:[],busy:false,photoErr:''
   };
   var w=openSheet(ent?'Edit meal':'Log a meal','', '<p class="err" id="m-err" role="alert"></p><div class="sumline" id="m-sum"></div><div class="btns">'+(ent?'<button class="btn danger" type="button" id="m-del">Delete</button>':'')+'<button class="btn" type="button" id="m-save">'+(ent?'Save changes':'Add to log')+'</button></div>');
   var saved=false,origClose=w.close;
@@ -1039,7 +1039,6 @@ function mealSheet(opt){
     h+='<div class="field"><span>Meal</span><div class="chips">'+SLOTS.map(function(s){return '<button type="button" class="chip" data-a="slot" data-s="'+s+'" aria-pressed="'+(m.slot===s)+'">'+s+'</button>';}).join('')+'</div></div>';
     h+='<label class="field"><span>Date</span><input class="in" type="date" id="m-date" value="'+m.date+'"></label>';
     h+=photoField();
-    h+='<label class="field"><span>Steps or notes (optional)</span><textarea class="in" id="m-notes" rows="5" placeholder="Write each step on its own line">'+esc(m.notes)+'</textarea></label>';
     if(m.mode==='recipe'){
       h+='<div class="field"><span>Recipe</span><input class="in" id="m-q" type="search" placeholder="Search recipes" autocomplete="off" value="'+esc(m.q)+'" aria-label="Search recipes"><div class="pick" id="m-list">'+pickRows()+'</div></div>';
       h+='<div class="field"><span>How many servings did you eat?</span><div class="stepper"><button type="button" class="icon" data-a="srv-" aria-label="Fewer servings">'+ic.minus+'</button><input class="in" id="m-srv" inputmode="decimal" value="'+esc(fmtN(m.servings))+'" aria-label="Servings"><button type="button" class="icon" data-a="srv+" aria-label="More servings">'+ic.plusL+'</button></div></div>';
@@ -1048,6 +1047,8 @@ function mealSheet(opt){
       h+='<div class="field"><span>Ingredients</span><div class="lines" id="m-lines">'+(m.lines.length?m.lines.map(ingLineHtml).join(''):'<p class="hint">Add each ingredient you used. Prices come from your Ingredients list.</p>')+'</div><button class="btn ghost" type="button" data-a="m-addline">'+ic.plus+' Add ingredient</button></div>';
       h+='<div class="field"><span>Other cost (optional)</span><div class="inwrap"><span class="pfx">'+esc(S.cur)+'</span><input id="m-cost" inputmode="decimal" placeholder="0.00" value="'+esc(m.cost)+'" aria-label="Other cost"></div><p class="hint">For ready-made items that are not in your ingredient list, such as a muffin you bought.</p></div>';
     }
+    h+='<label class="field"><span>'+(m.mode==='other'?'Recipe steps (optional)':'Steps or notes (optional)')+'</span><textarea class="in" id="m-notes" rows="5" placeholder="Write each step on its own line">'+esc(m.notes)+'</textarea></label>';
+    if(m.mode==='other')h+='<div class="field"><label style="display:flex;align-items:center;gap:10px;cursor:pointer"><input type="checkbox" id="m-saverec"'+(m.saveRec?' checked':'')+' style="width:22px;height:22px;flex:none;accent-color:var(--accent)"><span style="font-weight:600;color:var(--ink)">Also save to my Recipes</span></label><p class="hint">Keeps the ingredients and steps so you can find it under Recipes and cook it again.</p></div>';
     var er=$('#m-err',w);if(er)er.textContent='';
     var st=w.body.scrollTop;w.body.innerHTML=h;w.body.scrollTop=st;sum();
   }
@@ -1076,6 +1077,7 @@ function mealSheet(opt){
     else if(id==='m-cost'){m.cost=e.target.value;sum();}
   });
   w.addEventListener('change',function(e){
+    if(e.target.id==='m-saverec'){m.saveRec=e.target.checked;return;}
     if(e.target.id==='m-date'&&e.target.value){m.date=e.target.value;return;}
     var crow=e.target.closest&&e.target.closest('#m-lines .line');
     if(crow){
@@ -1129,6 +1131,12 @@ function mealSheet(opt){
       c+=extra;
       entry={id:ent?ent.id:nid(),date:m.date,slot:m.slot,recipeId:null,name:nm,servings:1,per:c,cost:c,lines:out,extra:extra,photo:m.photo};
       if(m.notes.trim())entry.notes=m.notes.trim();
+      if(m.saveRec){
+        var rl=out.filter(function(l){return ingById(l.ing);}).map(function(l){return {ing:l.ing,qty:l.qty,unit:l.unit};});
+        if(!rl.length){err.textContent='Add at least one ingredient from your list to save it as a recipe.';return;}
+        var nr={id:nid(),name:nm,servings:1,lines:rl,notes:m.notes.trim(),added:Date.now()};
+        saveRecipe(nr);entry.recipeId=nr.id;
+      }
     }
     saved=true;
     if(ent&&ent.photo&&ent.photo!==m.photo)delAsset(ent.photo);
