@@ -268,6 +268,9 @@ textarea.in{resize:vertical;min-height:90px}
 .dl .share i{display:block;height:100%;background:var(--accent)}
 .dl .c{font-family:var(--font-mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
 .notes{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.steps{margin:0;padding-left:24px;display:flex;flex-direction:column;gap:10px}
+.steps li{line-height:1.5;overflow-wrap:anywhere;padding-left:4px}
+.steps li::marker{font-weight:700;color:var(--accent)}
 .costs{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
 
 /* sheets */
@@ -688,10 +691,20 @@ function openItem(it){
   if(!it)return;
   if(it.kind==='cooked')postDetail(it);else recipeDetail(it.rid);
 }
+function stepsHtml(t){
+  var ls=String(t||'').split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean);
+  if(ls.length<2)return '<p class="notes">'+esc(ls[0]||'')+'</p>';
+  return '<ol class="steps">'+ls.map(function(x){return '<li>'+esc(x.replace(/^(?:\d+\s*[.)、:]|[-•*])\s*/,''))+'</li>';}).join('')+'</ol>';
+}
 function postDetail(it){
   var e=findEntry(it.eid);if(!e)return;
   var body=(e.photo?'<div class="photo"><img src="'+esc(blobSrc(e.photo))+'" alt="Photo of '+esc(e.name)+'"></div>':'')+
     '<div class="costs"><span class="meta">'+esc(fmtDay(e.date))+' · '+esc(e.slot)+'</span>'+(num(e.cost)>0?'<span>Cost <span class="tag">'+esc(money(e.cost))+'</span></span>':'')+'</div>';
+  var prec=e.recipeId?recipeById(e.recipeId):null,stp=(e.notes||(prec&&prec.notes)||'').trim();
+  if(!prec&&e.lines&&e.lines.length){
+    body+='<div><div class="flabel">Ingredients</div><div class="dl">'+e.lines.map(function(l){return '<div class="li"><span>'+esc(l.n||'Ingredient')+' <span class="meta">'+esc(fmtN(l.qty)+' '+l.unit)+'</span></span><span class="c">'+esc(money(l.c))+'</span></div>';}).join('')+'</div></div>';
+  }
+  body+='<div><div class="flabel">Steps</div>'+(stp?stepsHtml(stp):'<p class="hint">No steps yet. Tap Edit meal to write them.</p>')+'</div>';
   var rid=it.rid,foot='<div class="btns"><button class="btn ghost" type="button" id="p-edit">Edit meal</button>'+(rid?'<button class="btn ghost" type="button" id="p-rec">Recipe</button><button class="btn" type="button" id="p-again">Cook again</button>':'')+'</div>';
   var w=openSheet(e.name,body,foot);
   $('#p-edit',w).addEventListener('click',function(){mealSheet({entryId:e.id});});
@@ -833,7 +846,7 @@ function recipeSheet(id,opt){
   var body='<label class="field"><span>Recipe name</span><input class="in" id="r-name" autocomplete="off" placeholder="'+(idea?'e.g. Kimchi jjigae':'e.g. Nasi lemak')+'" value="'+esc(d.name)+'"></label>'+
     '<div id="r-photo"></div>'+
     '<label class="field"><span>Link (optional)</span><input class="in" id="r-link" inputmode="url" autocapitalize="off" autocomplete="off" placeholder="Video or post you want to follow" value="'+esc(d.link)+'"></label>'+
-    '<label class="field"><span>Method or notes</span><textarea class="in" id="r-notes" rows="4" placeholder="Steps, tips, where you shop">'+esc(d.notes)+'</textarea></label>'+
+    '<label class="field"><span>Steps or notes</span><textarea class="in" id="r-notes" rows="5" placeholder="Write each step on its own line">'+esc(d.notes)+'</textarea></label>'+
     '<button class="btn ghost" type="button" id="r-showcost">'+ic.plus+' Add ingredients and cost (optional)</button>'+
     '<div class="rcost" id="r-cost">'+
       '<label class="field"><span>Servings this makes</span><input class="in" id="r-serv" inputmode="decimal" value="'+esc(d.servings)+'"></label>'+
@@ -960,7 +973,7 @@ function recipeDetail(id){
   var body=(r.photo?'<div class="photo"><img src="'+esc(blobSrc(r.photo))+'" alt="Photo of '+esc(r.name)+'"></div>':'')+
     '<div class="costs">'+(lines.length?'<span>Total <span class="tag">'+esc(money(t))+'</span></span><span>Per serving <span class="tag">'+esc(money(ps))+'</span></span><span class="meta">Makes '+esc(plural(+fmtN(r.servings),'serving'))+'</span>':'')+'<span class="meta">'+(n?'Cooked '+esc(plural(n,'time')):'Not cooked yet')+'</span></div>'+
     (lk?'<div><a class="btn ghost small" href="'+esc(lk)+'" target="_blank" rel="noopener noreferrer">Open link</a></div>':'')+
-    (r.notes?'<div><div class="flabel">Method or notes</div><p class="notes">'+esc(r.notes)+'</p></div>':'')+
+    (r.notes?'<div><div class="flabel">Steps</div>'+stepsHtml(r.notes)+'</div>':'')+
     '<div><div class="flabel">'+(lines.length?'Ingredients, biggest cost first':'Ingredients')+'</div><div class="dl">'+(lines.length?lines.map(function(x){
       return '<div class="li"><span>'+(x.ing?esc(x.ing.name):'<em>Removed ingredient</em>')+' <span class="meta">'+esc(fmtN(x.l.qty)+' '+x.l.unit)+'</span></span><span class="c">'+esc(money(x.c))+'</span><span class="share"><i style="width:'+(t>0?Math.round(x.c/t*100):0)+'%"></i></span></div>';
     }).join(''):'<p class="hint">No ingredients yet. Tap Edit to add them and see the cost.</p>')+'</div></div>';
@@ -981,7 +994,7 @@ function mealSheet(opt){
     cost:ent&&!rec?String(ent.lines&&ent.lines.length?(ent.extra?ent.extra:''):ent.cost):'',
     lines:ent&&!rec&&ent.lines?ent.lines.map(function(l){return {ing:l.ing,n:l.n,qty:String(l.qty),unit:l.unit,snap:l.c};}):[],
     slot:ent?ent.slot:(opt.slot||defaultSlot()),date:ent?ent.date:S.date,q:'',
-    photo:ent&&ent.photo?ent.photo:'',uploaded:[],busy:false,photoErr:''
+    photo:ent&&ent.photo?ent.photo:'',notes:ent&&ent.notes?ent.notes:'',uploaded:[],busy:false,photoErr:''
   };
   var w=openSheet(ent?'Edit meal':'Log a meal','', '<p class="err" id="m-err" role="alert"></p><div class="sumline" id="m-sum"></div><div class="btns">'+(ent?'<button class="btn danger" type="button" id="m-del">Delete</button>':'')+'<button class="btn" type="button" id="m-save">'+(ent?'Save changes':'Add to log')+'</button></div>');
   var saved=false,origClose=w.close;
@@ -1026,6 +1039,7 @@ function mealSheet(opt){
     h+='<div class="field"><span>Meal</span><div class="chips">'+SLOTS.map(function(s){return '<button type="button" class="chip" data-a="slot" data-s="'+s+'" aria-pressed="'+(m.slot===s)+'">'+s+'</button>';}).join('')+'</div></div>';
     h+='<label class="field"><span>Date</span><input class="in" type="date" id="m-date" value="'+m.date+'"></label>';
     h+=photoField();
+    h+='<label class="field"><span>Steps or notes (optional)</span><textarea class="in" id="m-notes" rows="5" placeholder="Write each step on its own line">'+esc(m.notes)+'</textarea></label>';
     if(m.mode==='recipe'){
       h+='<div class="field"><span>Recipe</span><input class="in" id="m-q" type="search" placeholder="Search recipes" autocomplete="off" value="'+esc(m.q)+'" aria-label="Search recipes"><div class="pick" id="m-list">'+pickRows()+'</div></div>';
       h+='<div class="field"><span>How many servings did you eat?</span><div class="stepper"><button type="button" class="icon" data-a="srv-" aria-label="Fewer servings">'+ic.minus+'</button><input class="in" id="m-srv" inputmode="decimal" value="'+esc(fmtN(m.servings))+'" aria-label="Servings"><button type="button" class="icon" data-a="srv+" aria-label="More servings">'+ic.plusL+'</button></div></div>';
@@ -1057,6 +1071,7 @@ function mealSheet(opt){
     if(lrow&&e.target.dataset.f==='qty'){var li=+lrow.dataset.i;m.lines[li].qty=e.target.value;m.lines[li].snap=null;updLine(li);sum();return;}
     if(id==='m-q'){m.q=e.target.value;$('#m-list',w).innerHTML=pickRows();}
     else if(id==='m-srv'){m.servings=num(e.target.value);sum();}
+    else if(id==='m-notes'){m.notes=e.target.value;}
     else if(id==='m-name'){m.name=e.target.value;}
     else if(id==='m-cost'){m.cost=e.target.value;sum();}
   });
@@ -1098,6 +1113,7 @@ function mealSheet(opt){
       if(!(m.servings>0)){err.textContent='Enter the servings you ate.';return;}
       var per=curPer();
       entry={id:ent?ent.id:nid(),date:m.date,slot:m.slot,recipeId:r.id,name:r.name,servings:m.servings,per:per,cost:per*m.servings,photo:m.photo};
+      if(m.notes.trim())entry.notes=m.notes.trim();
     }else{
       var nm=m.name.trim(),extra=num(m.cost),out=[],c=0;
       if(!nm){err.textContent='Say what you had.';return;}
@@ -1112,6 +1128,7 @@ function mealSheet(opt){
       if(!out.length&&!(extra>0)){err.textContent='Add at least one ingredient, or enter a cost.';return;}
       c+=extra;
       entry={id:ent?ent.id:nid(),date:m.date,slot:m.slot,recipeId:null,name:nm,servings:1,per:c,cost:c,lines:out,extra:extra,photo:m.photo};
+      if(m.notes.trim())entry.notes=m.notes.trim();
     }
     saved=true;
     if(ent&&ent.photo&&ent.photo!==m.photo)delAsset(ent.photo);
